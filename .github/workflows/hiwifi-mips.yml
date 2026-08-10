@@ -90,10 +90,6 @@ jobs:
 
       - name: Configure MariaDB for HiWiFi (Soft-Float Static)
         run: |
-          # 查找 host 上的 ncurses 库路径（给 CMake 的 FindCurses 使用）
-          CURSES_LIB=$(find /usr/lib/x86_64-linux-gnu /usr/lib -maxdepth 1 -name "libncurses.so" 2>/dev/null | head -1)
-          [ -z "$CURSES_LIB" ] && CURSES_LIB="/usr/lib/x86_64-linux-gnu/libncurses.so"
-
           mkdir -p bld_hiwifi
           cd bld_hiwifi
 
@@ -106,7 +102,7 @@ jobs:
             -DWITH_SSL=bundled \
             -DWITH_ZLIB=bundled \
             -DWITH_PCRE=bundled \
-            -DWITH_READLINE=bundled \
+            -DWITH_READLINE=NO \
             -DWITH_JEMALLOC=OFF \
             -DWITH_EMBEDDED_SERVER=ON \
             -DWITH_EXTRA_CHARSETS=all \
@@ -131,10 +127,8 @@ jobs:
             -DWITH_PAM=OFF \
             -DHAVE_STACKTRACE=OFF \
             -DHAVE_BACKTRACE=OFF \
-            -DWITH_SYSTEMD=OFF \
+            -DWITH_SYSTEMD=no \
             -DWITH_LIBWRAP=OFF \
-            -DCURSES_INCLUDE_PATH=/usr/include \
-            -DCURSES_LIBRARY="${CURSES_LIB}" \
             -DCOMPILATION_COMMENT="HiWiFi MIPS32 Soft-Float (Built for MariaDB)"
 
       - name: Build MariaDB for HiWiFi
@@ -211,7 +205,7 @@ jobs:
             '  - SSL: Bundled OpenSSL' \
             '  - ZLIB: Bundled' \
             '  - PCRE: Bundled' \
-            '  - Readline: Bundled' \
+            '  - Readline: Disabled (embedded use, saves space)' \
             '  - Embedded Server: Enabled' \
             '  - Shared Libraries: Disabled (static only)' \
             '  - PAM: Disabled' \
