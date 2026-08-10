@@ -1,0 +1,253 @@
+name: Build HiWiFi (MIPS) Version
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  MIPS_TARGET: mipsel-linux-gnu
+
+jobs:
+  build-mips:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: mipsel
+            suffix: hiwifi_mipsel
+            compiler: mipsel-linux-gnu
+            feature_set: small
+            description: "HiWiFi MIPS32 (mipsel) - Minimal Embedded"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install MIPS cross-compiler toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-mipsel-linux-gnu \
+            g++-mipsel-linux-gnu \
+            binutils-mipsel-linux-gnu \
+            libc6-dev-mipsel-cross \
+            libaio-dev \
+            libssl-dev \
+            libreadline-dev \
+            libpam0g-dev \
+            pkg-config
+
+      - name: Verify MIPS toolchain
+        run: |
+          mipsel-linux-gnu-gcc --version
+          mipsel-linux-gnu-g++ --version
+          mipsel-linux-gnu-size --version
+
+      - name: Create CMake cross-compilation toolchain file
+        run: |
+          cat > mipsel-toolchain.cmake << 'EOF'
+          SET(CMAKE_SYSTEM_NAME Linux)
+          SET(CMAKE_SYSTEM_PROCESSOR mipsel)
+
+          SET(CMAKE_C_COMPILER mipsel-linux-gnu-gcc)
+          SET(CMAKE_CXX_COMPILER mipsel-linux-gnu-g++)
+          SET(CMAKE_AR mipsel-linux-gnu-ar CACHE FILEPATH "Archiver")
+          SET(CMAKE_RANLIB mipsel-linux-gnu-ranlib)
+          SET(CMAKE_STRIP mipsel-linux-gnu-strip)
+          SET(CMAKE_OBJCOPY mipsel-linux-gnu-objcopy)
+          SET(CMAKE_OBJDUMP mipsel-linux-gnu-objdump)
+
+          SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+          SET(CMAKE_FIND_ROOT_PATH /usr/mipsel-linux-gnu)
+          EOF
+
+      - name: Configure MariaDB for HiWiFi (Minimal Embedded)
+        run: |
+          mkdir -p bld_hiwifi
+          cd bld_hiwifi
+
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=../mipsel-toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_CONFIG=mysql_release \
+            -DCPACK_MONOLITHIC=ON \
+            -DFEATURE_SET=${{ matrix.feature_set }} \
+            -DWITH_SSL=bundled \
+            -DWITH_ZLIB=bundled \
+            -DWITH_PCRE=bundled \
+            -DWITH_READLINE=bundled \
+            -DWITH_JEMALLOC=static \
+            -DWITH_EMBEDDED_SERVER=ON \
+            -DWITH_EXTRA_CHARSETS=all \
+            -DWITH_UNIT_TESTS=OFF \
+            -DWITH_TESTS=OFF \
+            -DWITH_SAFEMALLOC=OFF \
+            -DWITH_DBUG_TRACE=OFF \
+            -DWITH_ASAN=OFF \
+            -DWITH_TSAN=OFF \
+            -DWITH_UBSAN=OFF \
+            -DWITH_NUMA=OFF \
+            -DIGNORE_AIO_CHECK=YES \
+            -DENABLED_PROFILING=OFF \
+            -DSECURITY_HARDENED=OFF \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWITHOUT_SERVER=OFF \
+            -DCLIENT_PLUGIN_ZSTD=OFF \
+            -DWITH_ROCKSDB_BZip2=OFF \
+            -DWITH_ROCKSDB_LZ4=OFF \
+            -DWITH_ROCKSDB_SNAPPY=OFF \
+            -DWITH_ROCKSDB_ZSTD=OFF \
+            -DCOMPILATION_COMMENT="HiWiFi MIPS32 Embedded (Built for MariaDB)"
+
+      - name: Build MariaDB for HiWiFi
+        run: |
+          cd bld_hiwifi
+          cmake --build . --verbose -- -j$(nproc)
+
+      - name: Strip MIPS binaries
+        run: |
+          cd bld_hiwifi
+          find . -type f -executable -exec file {} \; | grep -i mipsel || true
+          
+          for binary in \
+            sql/mysqld \
+            client/mariadb \
+            client/mariadb-check \
+            client/mariadb-dump \
+            client/mariadb-import \
+            client/mariadb-show \
+            client/mariadb-slap \
+            client/mariadb-upgrade \
+            extra/wsrep_sst_xtrabackup_v2/wsrep_sst_xtrabackup_v2
+          do
+            if [ -f "$binary" ]; then
+              echo "Stripping $binary"
+              mipsel-linux-gnu-strip --strip-all "$binary"
+            else
+              echo "Warning: $binary not found, skipping strip"
+            fi
+          done
+          echo "Strip complete"
+
+      - name: Package HiWiFi build artifacts
+        run: |
+          mkdir -p hiwifi_release/bin
+          mkdir -p hiwifi_release/lib
+          mkdir -p hiwifi_release/share
+
+          for binary in \
+            sql/mysqld \
+            client/mariadb \
+            client/mariadb-check \
+            client/mariadb-dump \
+            client/mariadb-import \
+            client/mariadb-show \
+            client/mariadb-slap \
+            client/mariadb-upgrade
+          do
+            src="bld_hiwifi/$binary"
+            if [ -f "$src" ]; then
+              cp "$src" hiwifi_release/bin/
+            else
+              echo "Warning: $src not found, skipping copy"
+            fi
+          done
+
+          if [ -f bld_hiwifi/extra/wsrep_sst_xtrabackup_v2/wsrep_sst_xtrabackup_v2 ]; then
+            cp bld_hiwifi/extra/wsrep_sst_xtrabackup_v2/wsrep_sst_xtrabackup_v2 hiwifi_release/bin/
+          fi
+
+          if [ -f bld_hiwifi/libmariadb/libmariadb.so.3 ]; then
+            cp bld_hiwifi/libmariadb/libmariadb.so* hiwifi_release/lib/
+          fi
+
+          find hiwifi_release -type f -executable -exec file {} \; || true
+
+          cat > hiwifi_release/README.txt << 'READMEEOF'
+          MariaDB for HiWiFi (MIPS32/mipsel)
+          ==================================
+
+          Build Configuration:
+            - Architecture: MIPS32 little-endian (mipsel)
+            - Build Type: Release (Minimal Embedded)
+            - SSL: Bundled OpenSSL
+            - ZLIB: Bundled
+            - PCRE: Bundled
+            - Readline: Bundled
+            - jemalloc: Static
+            - Embedded Server: Enabled
+            - Shared Libraries: Disabled (static only)
+            - NUMA: Disabled
+            - Profiling: Disabled
+
+          Deployment Instructions for HiWiFi:
+            1. Copy the entire hiwifi_release/ directory to your router
+            2. Place binaries in /usr/bin/ or /opt/bin/
+            3. Place libraries in /usr/lib/ or /opt/lib/
+            4. Run as lightweight embedded database
+
+          Note: This is a minimal embedded build. Not all storage engines
+                and features are included.
+          READMEEOF
+
+          tar czf MariaDB_HiWiFi_MIPS32.tar.gz hiwifi_release/
+
+      - name: Upload HiWiFi build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MariaDB_HiWiFi_MIPS32_${{ matrix.suffix }}
+          path: |
+            MariaDB_HiWiFi_MIPS32.tar.gz
+            hiwifi_release/
+          if-no-files-found: error
+
+  release:
+    needs: build-mips
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download HiWiFi artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -la artifacts/
+
+      - name: Create or Update HiWiFi Dev Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="dev-hiwifi"
+          echo "Using fixed tag: $VERSION"
+
+          # 删除旧 release（保留此行为，但增加了错误处理）
+          gh release delete "$VERSION" --yes 2>/dev/null || true
+          git push --delete origin "$VERSION" 2>/dev/null || true
+
+          # 重新创建 tag
+          git tag -f "$VERSION"
+          git push -f origin "$VERSION"
+
+          # 使用实际换行符而不是 %0A
+          NOTES=$'Automatic build from commit '"${{ github.sha }}"$'\n\n**Platform:**\n- HiWiFi MIPS32 (mipsel)\n\n**Features:**\n- Minimal Embedded Server\n- Bundled SSL/Zlib/PCRE\n- Static linking\n- Optimized for embedded devices'
+
+          gh release create "$VERSION" \
+            --title "MariaDB HiWiFi (MIPS32) Development Build" \
+            --notes "$NOTES" \
+            --prerelease \
+            artifacts/*
