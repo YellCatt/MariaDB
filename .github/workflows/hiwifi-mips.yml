@@ -58,6 +58,25 @@ jobs:
           mipsel-openwrt-linux-musl-g++ --version
           mipsel-openwrt-linux-musl-strip --version
 
+      - name: Create fake FindCurses for cross-compile
+        run: |
+          mkdir -p /tmp/fake_cmake_modules
+          cat > /tmp/fake_cmake_modules/FindCurses.cmake << 'EOF'
+          # Fake FindCurses for cross-compilation
+          # Prevents CMake from trying to link host ncurses with the cross-compiler
+          SET(CURSES_FOUND TRUE)
+          SET(CURSES_LIBRARY "" CACHE STRING "" FORCE)
+          SET(CURSES_LIBRARIES "" CACHE STRING "" FORCE)
+          SET(CURSES_INCLUDE_PATH "/usr/include" CACHE PATH "" FORCE)
+          SET(CURSES_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
+          SET(CURSES_CURSES_LIBRARY "" CACHE STRING "" FORCE)
+          SET(CURSES_NCURSES_LIBRARY "" CACHE STRING "" FORCE)
+          SET(HAVE_CURSES_H TRUE CACHE BOOL "" FORCE)
+          SET(HAVE_NCURSES_H TRUE CACHE BOOL "" FORCE)
+          SET(HAVE_TERM_H TRUE CACHE BOOL "" FORCE)
+          message(STATUS "Fake FindCurses: skipped detection for cross-compile")
+          EOF
+
       - name: Create CMake cross-compilation toolchain file (Soft-Float)
         run: |
           TOOLCHAIN_DIR=$(ls -d /opt/cross/openwrt-sdk-*/staging_dir/toolchain-*)
@@ -82,15 +101,6 @@ jobs:
             '# OpenWrt SDK sysroot（目标系统根目录，用于查找库和头文件）' \
             "SET(CMAKE_SYSROOT ${TARGET_DIR})" \
             '' \
-            '# 强制跳过 Curses 检测（交叉编译下 FindCurses 会失败，且不需要 readline）' \
-            'SET(CURSES_FOUND TRUE CACHE BOOL "Skip Curses check" FORCE)' \
-            'SET(CURSES_LIBRARIES "" CACHE STRING "" FORCE)' \
-            'SET(CURSES_INCLUDE_DIRS "" CACHE PATH "" FORCE)' \
-            'SET(CURSES_CURSES_LIBRARY "" CACHE FILEPATH "" FORCE)' \
-            'SET(CURSES_NCURSES_LIBRARY "" CACHE FILEPATH "" FORCE)' \
-            'SET(HAVE_CURSES_H TRUE CACHE BOOL "" FORCE)' \
-            'SET(HAVE_NCURSES_H TRUE CACHE BOOL "" FORCE)' \
-            '' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' \
@@ -104,6 +114,7 @@ jobs:
 
           cmake .. \
             -DCMAKE_TOOLCHAIN_FILE=../mipsel-sf-toolchain.cmake \
+            -DCMAKE_MODULE_PATH=/tmp/fake_cmake_modules \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_CONFIG=mysql_release \
             -DCPACK_MONOLITHIC=ON \
