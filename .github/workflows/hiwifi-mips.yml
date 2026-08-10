@@ -62,7 +62,6 @@ jobs:
         run: |
           mkdir -p /tmp/fake_cmake_modules
 
-          # Fake FindCurses - 跳过 ncurses 检测
           cat > /tmp/fake_cmake_modules/FindCurses.cmake << 'EOF'
           SET(CURSES_FOUND TRUE)
           SET(CURSES_LIBRARY "" CACHE STRING "" FORCE)
@@ -77,7 +76,6 @@ jobs:
           message(STATUS "Fake FindCurses: skipped detection for cross-compile")
           EOF
 
-          # Fake FindGnuTLS - 跳过 GnuTLS 检测（libmariadb 会找它，但我们用 bundled OpenSSL）
           cat > /tmp/fake_cmake_modules/FindGnuTLS.cmake << 'EOF'
           SET(GNUTLS_FOUND TRUE)
           SET(GNUTLS_LIBRARIES "" CACHE STRING "" FORCE)
@@ -86,6 +84,57 @@ jobs:
           SET(GNUTLS_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
           SET(GNUTLS_VERSION "3.7.0" CACHE STRING "" FORCE)
           message(STATUS "Fake FindGnuTLS: skipped detection for cross-compile")
+          EOF
+
+          cat > /tmp/fake_cmake_modules/FindCURL.cmake << 'EOF'
+          SET(CURL_FOUND TRUE)
+          SET(CURL_LIBRARIES "" CACHE STRING "" FORCE)
+          SET(CURL_LIBRARY "" CACHE STRING "" FORCE)
+          SET(CURL_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
+          SET(CURL_INCLUDE_DIR "/usr/include" CACHE PATH "" FORCE)
+          SET(CURL_VERSION_STRING "7.68.0" CACHE STRING "" FORCE)
+          message(STATUS "Fake FindCURL: skipped detection for cross-compile")
+          EOF
+
+          cat > /tmp/fake_cmake_modules/FindBZip2.cmake << 'EOF'
+          SET(BZIP2_FOUND TRUE)
+          SET(BZIP2_LIBRARIES "" CACHE STRING "" FORCE)
+          SET(BZIP2_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
+          SET(BZIP2_INCLUDE_DIR "/usr/include" CACHE PATH "" FORCE)
+          message(STATUS "Fake FindBZip2: skipped detection for cross-compile")
+          EOF
+
+          cat > /tmp/fake_cmake_modules/FindLZ4.cmake << 'EOF'
+          SET(LZ4_FOUND TRUE)
+          SET(LZ4_LIBRARIES "" CACHE STRING "" FORCE)
+          SET(LZ4_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
+          SET(LZ4_VERSION "1.9.0" CACHE STRING "" FORCE)
+          message(STATUS "Fake FindLZ4: skipped detection for cross-compile")
+          EOF
+
+          cat > /tmp/fake_cmake_modules/FindLibLZMA.cmake << 'EOF'
+          SET(LIBLZMA_FOUND TRUE)
+          SET(LIBLZMA_LIBRARIES "" CACHE STRING "" FORCE)
+          SET(LIBLZMA_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
+          SET(LIBLZMA_INCLUDE_DIR "/usr/include" CACHE PATH "" FORCE)
+          SET(LIBLZMA_HAS_AUTO_DECODER TRUE CACHE BOOL "" FORCE)
+          SET(LIBLZMA_HAS_EASY_ENCODER TRUE CACHE BOOL "" FORCE)
+          SET(LIBLZMA_HAS_LZMA_PRESET TRUE CACHE BOOL "" FORCE)
+          message(STATUS "Fake FindLibLZMA: skipped detection for cross-compile")
+          EOF
+
+          cat > /tmp/fake_cmake_modules/FindLZO.cmake << 'EOF'
+          SET(LZO_FOUND TRUE)
+          SET(LZO_LIBRARIES "" CACHE STRING "" FORCE)
+          SET(LZO_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
+          message(STATUS "Fake FindLZO: skipped detection for cross-compile")
+          EOF
+
+          cat > /tmp/fake_cmake_modules/FindSnappy.cmake << 'EOF'
+          SET(SNAPPY_FOUND TRUE)
+          SET(SNAPPY_LIBRARIES "" CACHE STRING "" FORCE)
+          SET(SNAPPY_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
+          message(STATUS "Fake FindSnappy: skipped detection for cross-compile")
           EOF
 
       - name: Create CMake cross-compilation toolchain file (Soft-Float)
@@ -156,6 +205,9 @@ jobs:
             -DWITH_ROCKSDB_SNAPPY=OFF \
             -DWITH_ROCKSDB_ZSTD=OFF \
             -DWITH_PAM=OFF \
+            -DPLUGIN_AUTH_PAM=NO \
+            -DPLUGIN_AUTH_PAM_V1=NO \
+            -DWITH_CURL=OFF \
             -DHAVE_STACKTRACE=OFF \
             -DHAVE_BACKTRACE=OFF \
             -DWITH_SYSTEMD=no \
