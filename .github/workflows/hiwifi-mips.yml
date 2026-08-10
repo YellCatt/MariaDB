@@ -147,6 +147,7 @@ jobs:
           printf '%s\n' \
             'SET(CMAKE_SYSTEM_NAME Linux)' \
             'SET(CMAKE_SYSTEM_PROCESSOR mipsel)' \
+            'SET(CMAKE_CROSSCOMPILING ON)' \
             '' \
             'SET(CMAKE_C_COMPILER   mipsel-openwrt-linux-musl-gcc)' \
             'SET(CMAKE_CXX_COMPILER mipsel-openwrt-linux-musl-g++)' \
@@ -165,7 +166,7 @@ jobs:
             'SET(CMAKE_EXE_LINKER_FLAGS    "-static" CACHE STRING "" FORCE)' \
             'SET(CMAKE_SHARED_LINKER_FLAGS ""        CACHE STRING "" FORCE)' \
             '' \
-            '# OpenWrt SDK sysroot（目标系统根目录，用于查找库和头文件）' \
+            '# OpenWrt SDK sysroot' \
             "SET(CMAKE_SYSROOT ${TARGET_DIR})" \
             '' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' \
@@ -190,7 +191,7 @@ jobs:
             -DWITH_PCRE=bundled \
             -DWITH_READLINE=NO \
             -DWITH_JEMALLOC=OFF \
-            -DWITH_EMBEDDED_SERVER=ON \
+            -DWITH_EMBEDDED_SERVER=OFF \
             -DWITH_EXTRA_CHARSETS=all \
             -DWITH_UNIT_TESTS=OFF \
             -DWITH_TESTS=OFF \
@@ -224,13 +225,28 @@ jobs:
             -DPLUGIN_SPHINX=NO \
             -DPLUGIN_MROONGA=NO \
             -DPLUGIN_CONNECT=NO \
+            -DPLUGIN_HANDLERSOCKET=NO \
+            -DPLUGIN_QUERY_CACHE_INFO=NO \
+            -DPLUGIN_QUERY_RESPONSE_TIME=NO \
+            -DPLUGIN_SERVER_AUDIT=NO \
+            -DPLUGIN_SQL_ERRLOG=NO \
+            -DPLUGIN_USERSTAT=NO \
+            -DPLUGIN_METADATA_LOCK_INFO=NO \
+            -DPLUGIN_TEST_VERSIONING=NO \
+            -DPLUGIN_THREAD_POOL_INFO=NO \
+            -DPLUGIN_SIMPLE_PASSWORD_CHECK=NO \
+            -DPLUGIN_PASSWORD_REUSE_CHECK=NO \
             -DBISON_EXECUTABLE=/usr/bin/bison \
             -DFLEX_EXECUTABLE=/usr/bin/flex \
-            -DCOMPILATION_COMMENT="HiWiFi MIPS32 Soft-Float (Built for MariaDB)"
+            -DCOMPILATION_COMMENT="HiWiFi MIPS32 Soft-Float (Built for MariaDB)" \
+            2>&1 | tee cmake-config.log
 
-      - name: Dump CMake logs on failure
+      - name: Dump full CMake logs on failure
         if: failure()
         run: |
+          echo "=== Full cmake-config.log ==="
+          cat bld_hiwifi/cmake-config.log 2>/dev/null || true
+          echo ""
           echo "=== CMakeError.log ==="
           cat bld_hiwifi/CMakeFiles/CMakeError.log 2>/dev/null || true
           echo ""
@@ -312,7 +328,7 @@ jobs:
             '  - ZLIB: Bundled' \
             '  - PCRE: Bundled' \
             '  - Readline: Disabled (embedded use, saves space)' \
-            '  - Embedded Server: Enabled' \
+            '  - Embedded Server: Disabled' \
             '  - Shared Libraries: Disabled (static only)' \
             '  - PAM: Disabled' \
             '  - NUMA: Disabled' \
