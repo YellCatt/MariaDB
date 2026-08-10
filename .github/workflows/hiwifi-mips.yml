@@ -58,12 +58,12 @@ jobs:
           mipsel-openwrt-linux-musl-g++ --version
           mipsel-openwrt-linux-musl-strip --version
 
-      - name: Create fake FindCurses for cross-compile
+      - name: Create fake CMake modules for cross-compile
         run: |
           mkdir -p /tmp/fake_cmake_modules
+
+          # Fake FindCurses - 跳过 ncurses 检测
           cat > /tmp/fake_cmake_modules/FindCurses.cmake << 'EOF'
-          # Fake FindCurses for cross-compilation
-          # Prevents CMake from trying to link host ncurses with the cross-compiler
           SET(CURSES_FOUND TRUE)
           SET(CURSES_LIBRARY "" CACHE STRING "" FORCE)
           SET(CURSES_LIBRARIES "" CACHE STRING "" FORCE)
@@ -75,6 +75,17 @@ jobs:
           SET(HAVE_NCURSES_H TRUE CACHE BOOL "" FORCE)
           SET(HAVE_TERM_H TRUE CACHE BOOL "" FORCE)
           message(STATUS "Fake FindCurses: skipped detection for cross-compile")
+          EOF
+
+          # Fake FindGnuTLS - 跳过 GnuTLS 检测（libmariadb 会找它，但我们用 bundled OpenSSL）
+          cat > /tmp/fake_cmake_modules/FindGnuTLS.cmake << 'EOF'
+          SET(GNUTLS_FOUND TRUE)
+          SET(GNUTLS_LIBRARIES "" CACHE STRING "" FORCE)
+          SET(GNUTLS_LIBRARY "" CACHE STRING "" FORCE)
+          SET(GNUTLS_INCLUDE_DIR "/usr/include" CACHE PATH "" FORCE)
+          SET(GNUTLS_INCLUDE_DIRS "/usr/include" CACHE PATH "" FORCE)
+          SET(GNUTLS_VERSION "3.7.0" CACHE STRING "" FORCE)
+          message(STATUS "Fake FindGnuTLS: skipped detection for cross-compile")
           EOF
 
       - name: Create CMake cross-compilation toolchain file (Soft-Float)
