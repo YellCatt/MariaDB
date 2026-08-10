@@ -34,7 +34,10 @@ jobs:
             libncursesw5-dev \
             libtinfo-dev \
             ninja-build \
-            xz-utils
+            xz-utils \
+            perl \
+            python3 \
+            gawk
 
       - name: Download OpenWrt SDK (soft-float mipsel toolchain)
         run: |
@@ -155,8 +158,12 @@ jobs:
             'SET(CMAKE_NM           mipsel-openwrt-linux-musl-nm)' \
             '' \
             '# 软浮点 + MIPS32r2 指令集（极路由 MT7620/MT7628）' \
-            'SET(CMAKE_C_FLAGS   "-march=mips32r2 -msoft-float -static" CACHE STRING "" FORCE)' \
-            'SET(CMAKE_CXX_FLAGS "-march=mips32r2 -msoft-float -static" CACHE STRING "" FORCE)' \
+            'SET(CMAKE_C_FLAGS   "-march=mips32r2 -msoft-float" CACHE STRING "" FORCE)' \
+            'SET(CMAKE_CXX_FLAGS "-march=mips32r2 -msoft-float" CACHE STRING "" FORCE)' \
+            '' \
+            '# 静态链接放在链接器阶段，避免破坏 CMake try_compile 测试' \
+            'SET(CMAKE_EXE_LINKER_FLAGS    "-static" CACHE STRING "" FORCE)' \
+            'SET(CMAKE_SHARED_LINKER_FLAGS ""        CACHE STRING "" FORCE)' \
             '' \
             '# OpenWrt SDK sysroot（目标系统根目录，用于查找库和头文件）' \
             "SET(CMAKE_SYSROOT ${TARGET_DIR})" \
@@ -177,7 +184,6 @@ jobs:
             -DCMAKE_MODULE_PATH=/tmp/fake_cmake_modules \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_CONFIG=mysql_release \
-            -DCPACK_MONOLITHIC=ON \
             -DFEATURE_SET=small \
             -DWITH_SSL=bundled \
             -DWITH_ZLIB=bundled \
@@ -212,7 +218,24 @@ jobs:
             -DHAVE_BACKTRACE=OFF \
             -DWITH_SYSTEMD=no \
             -DWITH_LIBWRAP=OFF \
+            -DWITH_WSREP=OFF \
+            -DPLUGIN_ROCKSDB=NO \
+            -DPLUGIN_OQGRAPH=NO \
+            -DPLUGIN_SPHINX=NO \
+            -DPLUGIN_MROONGA=NO \
+            -DPLUGIN_CONNECT=NO \
+            -DBISON_EXECUTABLE=/usr/bin/bison \
+            -DFLEX_EXECUTABLE=/usr/bin/flex \
             -DCOMPILATION_COMMENT="HiWiFi MIPS32 Soft-Float (Built for MariaDB)"
+
+      - name: Dump CMake logs on failure
+        if: failure()
+        run: |
+          echo "=== CMakeError.log ==="
+          cat bld_hiwifi/CMakeFiles/CMakeError.log 2>/dev/null || true
+          echo ""
+          echo "=== CMakeOutput.log (tail 80) ==="
+          cat bld_hiwifi/CMakeFiles/CMakeOutput.log 2>/dev/null | tail -n 80 || true
 
       - name: Build MariaDB for HiWiFi
         run: |
