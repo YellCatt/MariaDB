@@ -1,26 +1,20 @@
-name: Build HiWiFi (MIPS) Version
+name: Build HiWiFi (MIPS Soft-Float) Version
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-env:
-  MIPS_TARGET: mipsel-linux-gnu
-
 jobs:
-  build-mips:
+  build-mips-sf:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: linux
-            arch: mipsel
-            suffix: hiwifi_mipsel
-            compiler: mipsel-linux-gnu
-            feature_set: small
-            description: "HiWiFi MIPS32 (mipsel) - Minimal Embedded"
+          - arch: mipsel
+            suffix: hiwifi_mipsel_sf
+            description: "HiWiFi MIPS32 (mipsel) - Soft-Float Static"
 
     steps:
       - uses: actions/checkout@v4
@@ -28,64 +22,67 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install MIPS cross-compiler toolchain
+      - name: Download musl.cc soft-float MIPSel toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            gcc-mipsel-linux-gnu \
-            g++-mipsel-linux-gnu \
-            binutils-mipsel-linux-gnu \
-            libc6-dev-mipsel-cross \
-            libaio-dev \
-            libssl-dev \
-            libreadline-dev \
-            libpam0g-dev \
-            pkg-config
+          TOOLCHAIN_URL="https://musl.cc/mipsel-linux-muslsf-cross.tgz"
+          echo "Downloading $TOOLCHAIN_URL"
+          wget -q "$TOOLCHAIN_URL" -O /tmp/mipsel-linux-muslsf-cross.tgz
+          sudo mkdir -p /opt/cross
+          sudo tar xzf /tmp/mipsel-linux-muslsf-cross.tgz -C /opt/cross
+          ls -la /opt/cross/mipsel-linux-muslsf-cross/bin/
 
-      - name: Verify MIPS toolchain
+      - name: Add toolchain to PATH
         run: |
-          mipsel-linux-gnu-gcc --version
-          mipsel-linux-gnu-g++ --version
-          mipsel-linux-gnu-size --version
+          echo "/opt/cross/mipsel-linux-muslsf-cross/bin" >> $GITHUB_PATH
+          export PATH="/opt/cross/mipsel-linux-muslsf-cross/bin:$PATH"
+          mipsel-linux-muslsf-gcc --version
+          mipsel-linux-muslsf-g++ --version
+          mipsel-linux-muslsf-strip --version
 
-      - name: Create CMake cross-compilation toolchain file
+      - name: Create CMake cross-compilation toolchain file (Soft-Float)
         run: |
-          cat > mipsel-toolchain.cmake << 'EOF'
-          SET(CMAKE_SYSTEM_NAME Linux)
-          SET(CMAKE_SYSTEM_PROCESSOR mipsel)
+          printf '%s\n' \
+            'SET(CMAKE_SYSTEM_NAME Linux)' \
+            'SET(CMAKE_SYSTEM_PROCESSOR mipsel)' \
+            '' \
+            'SET(CMAKE_C_COMPILER   mipsel-linux-muslsf-gcc)' \
+            'SET(CMAKE_CXX_COMPILER mipsel-linux-muslsf-g++)' \
+            'SET(CMAKE_AR           mipsel-linux-muslsf-ar      CACHE FILEPATH "Archiver")' \
+            'SET(CMAKE_RANLIB       mipsel-linux-muslsf-ranlib)' \
+            'SET(CMAKE_STRIP        mipsel-linux-muslsf-strip)' \
+            'SET(CMAKE_OBJCOPY      mipsel-linux-muslsf-objcopy)' \
+            'SET(CMAKE_OBJDUMP      mipsel-linux-muslsf-objdump)' \
+            'SET(CMAKE_NM           mipsel-linux-muslsf-nm)' \
+            '' \
+            '# 软浮点 + MIPS32 指令集（极路由 MT7620/MT7628）' \
+            'SET(CMAKE_C_FLAGS   "-march=mips32r2 -msoft-float -static" CACHE STRING "" FORCE)' \
+            'SET(CMAKE_CXX_FLAGS "-march=mips32r2 -msoft-float -static" CACHE STRING "" FORCE)' \
+            '' \
+            '# musl 工具链的 sysroot' \
+            'SET(CMAKE_SYSROOT /opt/cross/mipsel-linux-muslsf-cross/mipsel-linux-muslsf)' \
+            '' \
+            'SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' \
+            'SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' \
+            'SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' \
+            'SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)' \
+            > mipsel-sf-toolchain.cmake
 
-          SET(CMAKE_C_COMPILER mipsel-linux-gnu-gcc)
-          SET(CMAKE_CXX_COMPILER mipsel-linux-gnu-g++)
-          SET(CMAKE_AR mipsel-linux-gnu-ar CACHE FILEPATH "Archiver")
-          SET(CMAKE_RANLIB mipsel-linux-gnu-ranlib)
-          SET(CMAKE_STRIP mipsel-linux-gnu-strip)
-          SET(CMAKE_OBJCOPY mipsel-linux-gnu-objcopy)
-          SET(CMAKE_OBJDUMP mipsel-linux-gnu-objdump)
-
-          SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-          SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-          SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-          SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-
-          SET(CMAKE_FIND_ROOT_PATH /usr/mipsel-linux-gnu)
-          EOF
-
-      - name: Configure MariaDB for HiWiFi (Minimal Embedded)
+      - name: Configure MariaDB for HiWiFi (Soft-Float Static)
         run: |
           mkdir -p bld_hiwifi
           cd bld_hiwifi
 
           cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=../mipsel-toolchain.cmake \
+            -DCMAKE_TOOLCHAIN_FILE=../mipsel-sf-toolchain.cmake \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_CONFIG=mysql_release \
             -DCPACK_MONOLITHIC=ON \
-            -DFEATURE_SET=${{ matrix.feature_set }} \
+            -DFEATURE_SET=small \
             -DWITH_SSL=bundled \
             -DWITH_ZLIB=bundled \
             -DWITH_PCRE=bundled \
             -DWITH_READLINE=bundled \
-            -DWITH_JEMALLOC=static \
+            -DWITH_JEMALLOC=OFF \
             -DWITH_EMBEDDED_SERVER=ON \
             -DWITH_EXTRA_CHARSETS=all \
             -DWITH_UNIT_TESTS=OFF \
@@ -106,18 +103,30 @@ jobs:
             -DWITH_ROCKSDB_LZ4=OFF \
             -DWITH_ROCKSDB_SNAPPY=OFF \
             -DWITH_ROCKSDB_ZSTD=OFF \
-            -DCOMPILATION_COMMENT="HiWiFi MIPS32 Embedded (Built for MariaDB)"
+            -DWITH_PAM=OFF \
+            -DHAVE_STACKTRACE=OFF \
+            -DHAVE_BACKTRACE=OFF \
+            -DWITH_SYSTEMD=OFF \
+            -DWITH_LIBWRAP=OFF \
+            -DCOMPILATION_COMMENT="HiWiFi MIPS32 Soft-Float (Built for MariaDB)"
 
       - name: Build MariaDB for HiWiFi
         run: |
           cd bld_hiwifi
           cmake --build . --verbose -- -j$(nproc)
 
+      - name: Verify soft-float binaries
+        run: |
+          cd bld_hiwifi
+          echo "=== Checking for hard-float opcodes (should be empty) ==="
+          find . -type f -executable -exec mipsel-linux-muslsf-objdump -d {} \; 2>/dev/null | grep -E '\badd\.s\b|\bsub\.s\b|\bmul\.s\b|\bdiv\.s\b' || echo "No hard-float instructions found - GOOD"
+
+          echo "=== File info ==="
+          find . -type f -executable -exec file {} \; | grep -i mipsel || true
+
       - name: Strip MIPS binaries
         run: |
           cd bld_hiwifi
-          find . -type f -executable -exec file {} \; | grep -i mipsel || true
-          
           for binary in \
             sql/mysqld \
             client/mariadb \
@@ -126,14 +135,13 @@ jobs:
             client/mariadb-import \
             client/mariadb-show \
             client/mariadb-slap \
-            client/mariadb-upgrade \
-            extra/wsrep_sst_xtrabackup_v2/wsrep_sst_xtrabackup_v2
+            client/mariadb-upgrade
           do
             if [ -f "$binary" ]; then
               echo "Stripping $binary"
-              mipsel-linux-gnu-strip --strip-all "$binary"
+              mipsel-linux-muslsf-strip --strip-all "$binary"
             else
-              echo "Warning: $binary not found, skipping strip"
+              echo "Warning: $binary not found, skipping"
             fi
           done
           echo "Strip complete"
@@ -162,56 +170,50 @@ jobs:
             fi
           done
 
-          if [ -f bld_hiwifi/extra/wsrep_sst_xtrabackup_v2/wsrep_sst_xtrabackup_v2 ]; then
-            cp bld_hiwifi/extra/wsrep_sst_xtrabackup_v2/wsrep_sst_xtrabackup_v2 hiwifi_release/bin/
-          fi
-
-          if [ -f bld_hiwifi/libmariadb/libmariadb.so.3 ]; then
-            cp bld_hiwifi/libmariadb/libmariadb.so* hiwifi_release/lib/
-          fi
-
           find hiwifi_release -type f -executable -exec file {} \; || true
 
-          cat > hiwifi_release/README.txt << 'READMEEOF'
-          MariaDB for HiWiFi (MIPS32/mipsel)
-          ==================================
+          printf '%s\n' \
+            'MariaDB for HiWiFi (MIPS32/mipsel Soft-Float)' \
+            '=============================================' \
+            '' \
+            'Build Configuration:' \
+            '  - Architecture: MIPS32 little-endian (mipsel)' \
+            '  - Float ABI: Soft-Float (no FPU required)' \
+            '  - Build Type: Release (Minimal Embedded)' \
+            '  - C Library: musl (static linked)' \
+            '  - SSL: Bundled OpenSSL' \
+            '  - ZLIB: Bundled' \
+            '  - PCRE: Bundled' \
+            '  - Readline: Bundled' \
+            '  - Embedded Server: Enabled' \
+            '  - Shared Libraries: Disabled (static only)' \
+            '  - PAM: Disabled' \
+            '  - NUMA: Disabled' \
+            '  - Profiling: Disabled' \
+            '' \
+            'Deployment Instructions for HiWiFi:' \
+            '  1. Copy the entire hiwifi_release/ directory to your router' \
+            '  2. Place binaries in /usr/bin/ or /opt/bin/' \
+            '  3. All binaries are statically linked, no library dependencies' \
+            '  4. Run as lightweight embedded database' \
+            '' \
+            'Note: This is a minimal embedded build. Not all storage engines' \
+            '      and features are included. Built for MT7620/MT7628 (no FPU).' \
+            > hiwifi_release/README.txt
 
-          Build Configuration:
-            - Architecture: MIPS32 little-endian (mipsel)
-            - Build Type: Release (Minimal Embedded)
-            - SSL: Bundled OpenSSL
-            - ZLIB: Bundled
-            - PCRE: Bundled
-            - Readline: Bundled
-            - jemalloc: Static
-            - Embedded Server: Enabled
-            - Shared Libraries: Disabled (static only)
-            - NUMA: Disabled
-            - Profiling: Disabled
-
-          Deployment Instructions for HiWiFi:
-            1. Copy the entire hiwifi_release/ directory to your router
-            2. Place binaries in /usr/bin/ or /opt/bin/
-            3. Place libraries in /usr/lib/ or /opt/lib/
-            4. Run as lightweight embedded database
-
-          Note: This is a minimal embedded build. Not all storage engines
-                and features are included.
-          READMEEOF
-
-          tar czf MariaDB_HiWiFi_MIPS32.tar.gz hiwifi_release/
+          tar czf MariaDB_HiWiFi_MIPS32_SoftFloat.tar.gz hiwifi_release/
 
       - name: Upload HiWiFi build artifact
         uses: actions/upload-artifact@v4
         with:
           name: MariaDB_HiWiFi_MIPS32_${{ matrix.suffix }}
           path: |
-            MariaDB_HiWiFi_MIPS32.tar.gz
+            MariaDB_HiWiFi_MIPS32_SoftFloat.tar.gz
             hiwifi_release/
           if-no-files-found: error
 
   release:
-    needs: build-mips
+    needs: build-mips-sf
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -235,19 +237,16 @@ jobs:
           VERSION="dev-hiwifi"
           echo "Using fixed tag: $VERSION"
 
-          # 删除旧 release（保留此行为，但增加了错误处理）
           gh release delete "$VERSION" --yes 2>/dev/null || true
           git push --delete origin "$VERSION" 2>/dev/null || true
 
-          # 重新创建 tag
           git tag -f "$VERSION"
           git push -f origin "$VERSION"
 
-          # 使用实际换行符而不是 %0A
-          NOTES=$'Automatic build from commit '"${{ github.sha }}"$'\n\n**Platform:**\n- HiWiFi MIPS32 (mipsel)\n\n**Features:**\n- Minimal Embedded Server\n- Bundled SSL/Zlib/PCRE\n- Static linking\n- Optimized for embedded devices'
+          NOTES=$'Automatic build from commit '"${{ github.sha }}"$'\n\n**Platform:**\n- HiWiFi MIPS32 (mipsel) Soft-Float\n- No FPU required (MT7620/MT7628 compatible)\n\n**Features:**\n- Minimal Embedded Server\n- musl libc static linking\n- Bundled SSL/Zlib/PCRE\n- Optimized for embedded devices'
 
           gh release create "$VERSION" \
-            --title "MariaDB HiWiFi (MIPS32) Development Build" \
+            --title "MariaDB HiWiFi (MIPS32 Soft-Float) Development Build" \
             --notes "$NOTES" \
             --prerelease \
             artifacts/*
