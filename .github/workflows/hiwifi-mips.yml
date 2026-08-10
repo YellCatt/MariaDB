@@ -82,6 +82,15 @@ jobs:
             '# OpenWrt SDK sysroot（目标系统根目录，用于查找库和头文件）' \
             "SET(CMAKE_SYSROOT ${TARGET_DIR})" \
             '' \
+            '# 强制跳过 Curses 检测（交叉编译下 FindCurses 会失败，且不需要 readline）' \
+            'SET(CURSES_FOUND TRUE CACHE BOOL "Skip Curses check" FORCE)' \
+            'SET(CURSES_LIBRARIES "" CACHE STRING "" FORCE)' \
+            'SET(CURSES_INCLUDE_DIRS "" CACHE PATH "" FORCE)' \
+            'SET(CURSES_CURSES_LIBRARY "" CACHE FILEPATH "" FORCE)' \
+            'SET(CURSES_NCURSES_LIBRARY "" CACHE FILEPATH "" FORCE)' \
+            'SET(HAVE_CURSES_H TRUE CACHE BOOL "" FORCE)' \
+            'SET(HAVE_NCURSES_H TRUE CACHE BOOL "" FORCE)' \
+            '' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' \
