@@ -22,6 +22,20 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            bison \
+            flex \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libtinfo-dev \
+            ninja-build \
+            xz-utils
+
       - name: Download OpenWrt SDK (soft-float mipsel toolchain)
         run: |
           SDK_URL="https://downloads.openwrt.org/releases/22.03.5/targets/ramips/mt7620/openwrt-sdk-22.03.5-ramips-mt7620_gcc-11.2.0_musl.Linux-x86_64.tar.xz"
@@ -34,8 +48,10 @@ jobs:
       - name: Add toolchain to PATH
         run: |
           TOOLCHAIN_DIR=$(ls -d /opt/cross/openwrt-sdk-*/staging_dir/toolchain-*)
+          TARGET_DIR=$(ls -d /opt/cross/openwrt-sdk-*/staging_dir/target-*)
           echo "$TOOLCHAIN_DIR/bin" >> $GITHUB_PATH
           echo "STAGING_DIR=$TOOLCHAIN_DIR" >> $GITHUB_ENV
+          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
           export PATH="$TOOLCHAIN_DIR/bin:$PATH"
           export STAGING_DIR="$TOOLCHAIN_DIR"
           mipsel-openwrt-linux-musl-gcc --version
@@ -45,6 +61,7 @@ jobs:
       - name: Create CMake cross-compilation toolchain file (Soft-Float)
         run: |
           TOOLCHAIN_DIR=$(ls -d /opt/cross/openwrt-sdk-*/staging_dir/toolchain-*)
+          TARGET_DIR=$(ls -d /opt/cross/openwrt-sdk-*/staging_dir/target-*)
           printf '%s\n' \
             'SET(CMAKE_SYSTEM_NAME Linux)' \
             'SET(CMAKE_SYSTEM_PROCESSOR mipsel)' \
@@ -62,8 +79,8 @@ jobs:
             'SET(CMAKE_C_FLAGS   "-march=mips32r2 -msoft-float -static" CACHE STRING "" FORCE)' \
             'SET(CMAKE_CXX_FLAGS "-march=mips32r2 -msoft-float -static" CACHE STRING "" FORCE)' \
             '' \
-            '# OpenWrt SDK sysroot' \
-            "SET(CMAKE_SYSROOT $ENV{STAGING_DIR})" \
+            '# OpenWrt SDK sysroot（目标系统根目录，用于查找库和头文件）' \
+            "SET(CMAKE_SYSROOT ${TARGET_DIR})" \
             '' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' \
             'SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' \
@@ -73,6 +90,10 @@ jobs:
 
       - name: Configure MariaDB for HiWiFi (Soft-Float Static)
         run: |
+          # 查找 host 上的 ncurses 库路径（给 CMake 的 FindCurses 使用）
+          CURSES_LIB=$(find /usr/lib/x86_64-linux-gnu /usr/lib -maxdepth 1 -name "libncurses.so" 2>/dev/null | head -1)
+          [ -z "$CURSES_LIB" ] && CURSES_LIB="/usr/lib/x86_64-linux-gnu/libncurses.so"
+
           mkdir -p bld_hiwifi
           cd bld_hiwifi
 
@@ -112,6 +133,8 @@ jobs:
             -DHAVE_BACKTRACE=OFF \
             -DWITH_SYSTEMD=OFF \
             -DWITH_LIBWRAP=OFF \
+            -DCURSES_INCLUDE_PATH=/usr/include \
+            -DCURSES_LIBRARY="${CURSES_LIB}" \
             -DCOMPILATION_COMMENT="HiWiFi MIPS32 Soft-Float (Built for MariaDB)"
 
       - name: Build MariaDB for HiWiFi
