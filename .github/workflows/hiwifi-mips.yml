@@ -162,7 +162,7 @@ jobs:
             'SET(CMAKE_C_FLAGS   "-march=mips32r2 -msoft-float" CACHE STRING "" FORCE)' \
             'SET(CMAKE_CXX_FLAGS "-march=mips32r2 -msoft-float" CACHE STRING "" FORCE)' \
             '' \
-            '# 静态链接放在链接器阶段，避免破坏 CMake try_compile 测试' \
+            '# 静态链接放在链接器阶段' \
             'SET(CMAKE_EXE_LINKER_FLAGS    "-static" CACHE STRING "" FORCE)' \
             'SET(CMAKE_SHARED_LINKER_FLAGS ""        CACHE STRING "" FORCE)' \
             '' \
@@ -180,7 +180,9 @@ jobs:
           mkdir -p bld_hiwifi
           cd bld_hiwifi
 
+          set -o pipefail
           cmake .. \
+            -G "Unix Makefiles" \
             -DCMAKE_TOOLCHAIN_FILE=../mipsel-sf-toolchain.cmake \
             -DCMAKE_MODULE_PATH=/tmp/fake_cmake_modules \
             -DCMAKE_BUILD_TYPE=Release \
@@ -256,7 +258,7 @@ jobs:
       - name: Build MariaDB for HiWiFi
         run: |
           cd bld_hiwifi
-          cmake --build . --verbose -- -j$(nproc)
+          cmake --build . --verbose -j$(nproc)
 
       - name: Verify soft-float binaries
         run: |
